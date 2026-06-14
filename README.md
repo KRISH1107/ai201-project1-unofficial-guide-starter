@@ -13,6 +13,7 @@
      Why is this knowledge valuable, and why is it hard to find through official channels?
      Example: "Student reviews of CS professors at [university] — useful because official
      course descriptions don't reflect teaching style, exam difficulty, or workload." -->
+This project covers Rutgers New Brunswick Computer Science course and professor reviews. The goal is to make unofficial student feedback searchable across questions about teaching style, workload, exam difficulty, grading, attendance expectations, office hours, and course support. This knowledge is valuable because official course descriptions explain curriculum requirements, but they usually do not capture what students actually experience when choosing a professor or preparing for a class.
 
 ---
 
@@ -24,16 +25,16 @@
 
 | # | Source | Type | URL or file path |
 |---|--------|------|-----------------|
-| 1 | | | |
-| 2 | | | |
-| 3 | | | |
-| 4 | | | |
-| 5 | | | |
-| 6 | | | |
-| 7 | | | |
-| 8 | | | |
-| 9 | | | |
-| 10 | | | |
+| 1 | Ana Paula Centeno, Rutgers CS reviews | Rate My Professors page | https://www.ratemyprofessors.com/professor/600296 |
+| 2 | Lars Sorensen, Rutgers CS reviews | Rate My Professors page | https://www.ratemyprofessors.com/professor/2279091 |
+| 3 | Pedro Pajarillo, Rutgers CS reviews | Rate My Professors page | https://www.ratemyprofessors.com/professor/3025313 |
+| 4 | John-Austen Francisco, Rutgers CS reviews | Rate My Professors page | https://www.ratemyprofessors.com/professor/1833903 |
+| 5 | Jeffrey Ames, Rutgers CS reviews | Rate My Professors page | https://www.ratemyprofessors.com/professor/2256513 |
+| 6 | Alexander Borgida, Rutgers CS reviews | Rate My Professors page | https://www.ratemyprofessors.com/professor/173951 |
+| 7 | Uli Kremer, Rutgers CS reviews | Rate My Professors page | https://www.ratemyprofessors.com/professor/1815726 |
+| 8 | Srinivas Narayana, Rutgers CS reviews | Rate My Professors page | https://www.ratemyprofessors.com/professor/2481805 |
+| 9 | Ahmed Elgammal, Rutgers CS reviews | Rate My Professors page | https://www.ratemyprofessors.com/professor/184976 |
+| 10 | Aaron Bernstein, Rutgers CS reviews | Rate My Professors page | https://www.ratemyprofessors.com/professor/2447976 |
 
 ---
 
