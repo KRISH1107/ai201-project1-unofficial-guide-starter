@@ -65,9 +65,9 @@ This project covers Rutgers New Brunswick Computer Science course and professor 
      Consider: context length limits, multilingual support, accuracy on domain-specific text,
      latency, and local vs. API-hosted. -->
 
-**Model used:**
+**Model used:** `all-MiniLM-L6-v2` via `sentence-transformers`, with embeddings stored in a local ChromaDB collection (`rutgers_cs_reviews`) using cosine distance. Embeddings are L2-normalized, so ChromaDB returns `1 - cosine_similarity` as the distance (lower = more relevant). I chose it because it runs locally with no API key or rate limits, is fast on CPU, and is tuned for short sentence-level text — which fits my one-review-per-chunk strategy. Retrieval uses top-k = 5. Across all five evaluation queries, the top-ranked chunk scored between 0.27 and 0.46 and came from the correct professor, confirming retrieval quality before adding generation.
 
-**Production tradeoff reflection:**
+**Production tradeoff reflection:** If I were deploying for real users and cost weren't a constraint, I'd weigh a stronger hosted embedding model (e.g., OpenAI `text-embedding-3-large` or Cohere) for better accuracy on slangy, sarcastic review text where MiniLM can miss implied sentiment (e.g., "his lectures put me to sleep" has no explicit negative keyword). The tradeoffs: (1) accuracy on domain-specific text — larger models capture more nuance but with diminishing returns on already-short reviews; (2) latency and dependency — an API adds network round-trips and an external point of failure versus a fully local model; (3) cost at scale — per-token billing for every chunk and query; (4) context length — irrelevant for short reviews but important if I expanded to long-form guides or Reddit megathreads; (5) multilingual support — unnecessary for an English-only Rutgers corpus, but a multilingual model would matter for an international deployment; (6) privacy — local embedding keeps student opinions off third-party servers. For this project, the local model's zero cost, low latency, and strong retrieval scores make it the right default.
 
 ---
 
