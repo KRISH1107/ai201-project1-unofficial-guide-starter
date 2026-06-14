@@ -43,11 +43,11 @@ These documents are mostly short, informal student reviews rather than long offi
      numbers fit the structure of your documents.
      A review-heavy corpus warrants different chunking than a long FAQ. -->
 
-**Chunk size:**
+**Chunk size:** One individual student review per chunk (review-aware chunking), with a soft cap of ~600 characters. The large majority of reviews fall well under this cap, so most chunks are a single complete review of roughly 1–4 sentences (~250–500 characters). If a single review exceeds the cap, it is split on sentence boundaries into at most two chunks.
 
-**Overlap:**
+**Overlap:** No overlap between reviews (0 characters across review boundaries). For the rare oversized review that must be split, I use a small ~50-character sentence-boundary overlap so a thought that straddles the split point stays recoverable.
 
-**Reasoning:**
+**Reasoning:** My documents are not long-form guides — each Rate My Professors page is a stack of short, self-contained opinions, and a single review is the natural unit of meaning. Splitting on a fixed character count (e.g., "every 500 chars") would slice one student's opinion in half and merge the tail of one reviewer with the head of another, producing chunks that mix two unrelated verdicts and embed to a muddy average. Keeping one review per chunk means each embedding represents a single coherent stance ("exams are code-heavy but fair"), which is exactly the granularity my evaluation questions ask about. I avoid cross-review overlap for the same reason: overlap is useful when one fact is spread across adjacent paragraphs of a continuous document, but here adjacent text belongs to different authors, so overlap would only bleed one reviewer's words into another's chunk. Each chunk carries metadata (professor name, source URL, course tag if present) so attribution survives chunking. Signs the choice is wrong: if chunks were too small (e.g., per-sentence), a query like "is the homework hard but the exams easy?" would lose the contrast that lived in one review; if too large (whole page per chunk), retrieval would return a 40-review blob where the relevant sentence is diluted and the LLM can't tell which opinion is which.
 
 ---
 
@@ -59,11 +59,11 @@ These documents are mostly short, informal student reviews rather than long offi
      would you weigh in choosing a different embedding model — context length, multilingual
      support, accuracy on domain-specific text, latency? -->
 
-**Embedding model:**
+**Embedding model:** `all-MiniLM-L6-v2` via `sentence-transformers`. It runs locally with no API key or rate limits, produces 384-dimensional embeddings, is fast on CPU, and is well suited to short sentence-level text — which matches my one-review-per-chunk strategy. Its 256-token input window is not a constraint here because individual reviews are short.
 
-**Top-k:**
+**Top-k:** k = 5 by default. Because each chunk is one review and any given professor has many reviews, a single review is rarely the whole story; retrieving ~5 lets the LLM see a spread of opinions and surface agreement or disagreement. Too few (k = 1–2) risks returning one outlier review and missing the consensus; too many (k = 15+) pulls in loosely related reviews from other professors/courses, dilutes the prompt, and raises the chance the model latches onto an off-topic chunk. I may filter out chunks below a similarity threshold so weak matches don't pad the context.
 
-**Production tradeoff reflection:**
+**Production tradeoff reflection:** If cost weren't a constraint, I'd weigh a stronger hosted embedding model (e.g., OpenAI `text-embedding-3-large` or Cohere embeddings) for better semantic accuracy on slangy, sarcastic student text where MiniLM can miss nuance ("his lectures put me to sleep" implies a complaint without negative keywords). The tradeoffs: (1) accuracy/recall — larger models capture finer distinctions but with diminishing returns on already-short text; (2) latency and dependency — an API adds network round-trips and a hard dependency on an external service vs. MiniLM running fully local; (3) cost at scale — per-token API billing for thousands of chunks plus every query; (4) context length — not relevant for my short reviews, but it would matter if I expanded to long-form guides or Reddit megathreads; (5) multilingual support — unnecessary for an English-only Rutgers corpus, but a multilingual model (e.g., `paraphrase-multilingual-MiniLM`) would matter for an international or multi-campus deployment; (6) privacy — local embedding keeps student opinions off third-party servers. For this project, the local model's zero cost, low latency, and good-enough accuracy on short text make it the right default.
 
 ---
 
