@@ -47,13 +47,13 @@ This project covers Rutgers New Brunswick Computer Science course and professor 
      - Any preprocessing you did before chunking (e.g., stripping HTML, removing headers)
      - What your final chunk count was across all documents -->
 
-**Chunk size:**
+**Chunk size:** One student review per chunk (review-aware chunking), soft-capped at 600 characters. In practice every review fell under the cap, so each chunk is exactly one complete review (37–382 characters; average ~286). Each chunk text is prefixed with the professor name and course (e.g., `Jeffrey Ames (CS336): ...`) so it stays self-contained after retrieval.
 
-**Overlap:**
+**Overlap:** None across reviews (0 characters). Overlap (~50 characters on sentence boundaries) is only applied if a single review exceeds the 600-character cap and must be split — which did not occur in the current corpus.
 
-**Why these choices fit your documents:**
+**Why these choices fit your documents:** Rate My Professors pages are stacks of short, self-contained opinions, so a single review is the natural unit of meaning. Fixed-character splitting would merge the tail of one student's verdict with the head of another's and embed to a muddy average; keeping one review per chunk means each embedding represents one coherent stance. Preprocessing before chunking: HTML entities are decoded (`&#39;` → `'`, `&amp;` → `&`), stray HTML tags are stripped, and site boilerplate is removed (rating headers, `I'm Professor X`, `Tags:` lines, `Helpful` + vote tallies, `Load More Ratings`, and the page footer). See `pipeline.py` (`clean_text`).
 
-**Final chunk count:**
+**Final chunk count:** 50 chunks across 10 documents (4–6 per professor). This sits comfortably above the 50-chunk floor and well below the 2,000-chunk ceiling, which fits a corpus of ~50 short reviews.
 
 ---
 
