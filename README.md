@@ -80,9 +80,13 @@ This project covers Rutgers New Brunswick Computer Science course and professor 
      Do not just say "I told it to use the documents" — show the actual instruction or explain
      the mechanism. -->
 
-**System prompt grounding instruction:**
+**System prompt grounding instruction:** Grounding is enforced in two layers (see `query.py`). First, a **structural relevance gate**: retrieval returns the top-5 chunks by cosine distance, and any question whose best chunk is worse than distance 0.60 is answered with `"I don't have enough information on that."` *without ever calling the LLM* — so an out-of-domain question physically cannot be answered from the model's training knowledge. Second, the system prompt to `llama-3.3-70b-versatile` states the rules explicitly:
 
-**How source attribution is surfaced in the response:**
+> "You are an assistant that answers questions about Rutgers University Computer Science professors and courses using ONLY the student reviews provided in the context. Rules: (1) Use ONLY the information in the provided reviews. Do not use any outside or prior knowledge... (2) If the reviews do not contain enough information to answer, reply EXACTLY with: "I don't have enough information on that." ... (3) When reviews disagree, summarize the range of opinions instead of picking one side. (4) Refer to professors and courses by name as they appear in the reviews. Do not invent details, numbers, or quotes that are not in the context. (5) Keep the answer concise."
+
+The retrieved chunks are passed as a numbered, source-labeled context block, and the temperature is set to 0.1 to minimize improvisation. Verified on the out-of-domain question "What is the best dining hall at Rutgers?" — the system returned the refusal with no sources.
+
+**How source attribution is surfaced in the response:** Attribution is **programmatic, not LLM-generated**. After generation, `ask()` builds the source list from the metadata of the chunks that were actually passed as context (`source_file`, `professor`, `source_url`), de-duplicated by document. This guarantees a citation even if the model forgets to mention one, and the Gradio UI shows it in a separate "Retrieved from (sources)" panel. (Trade-off documented in the Failure Case Analysis: this can over-cite documents the answer didn't actually use.) When the system declines for lack of relevant context, the source list is empty.
 
 ---
 
@@ -94,14 +98,16 @@ This project covers Rutgers New Brunswick Computer Science course and professor 
 
 | # | Question | Expected answer | System response (summarized) | Retrieval quality | Response accuracy |
 |---|----------|-----------------|------------------------------|-------------------|-------------------|
-| 1 | | | | | |
-| 2 | | | | | |
-| 3 | | | | | |
-| 4 | | | | | |
-| 5 | | | | | |
+| 1 | What do students say about Ana Paula Centeno's CS111 exams and assignments? | Mixed: assignments simple but lengthy, 111 exams code-heavy; some call exams unnecessarily hard; past exams are a useful study resource. | Summarized the split: exams manageable if you use past exams, but called "code-heavy" / "unnecessarily hard" by others; assignments "simple but lengthy." All 5 chunks from `centeno.txt` (dist 0.36–0.49). | Relevant | Accurate |
+| 2 | Which Rutgers CS professors do students say give a lot of extra credit? | Pedro Pajarillo and Aaron Bernstein. | Correctly named Bernstein and Pajarillo with the specifics (Bernstein for grade recovery, Pajarillo via extracurricular sessions). But the cited source list also included Narayana and Ames, who the answer didn't use. | Partially relevant | Accurate |
+| 3 | What are the main complaints about John-Austen Francisco's teaching? | Boring/lecture-heavy/disorganized lectures, tough exams, despite some calling him knowledgeable. | Listed boring/hard-to-follow lectures, disorganization (grades not posted to Canvas), tough exams, and noted opinions vary. All 5 chunks from `francisco.txt` (dist 0.29–0.44). | Relevant | Accurate |
+| 4 | Which professor is associated with math-heavy AI or machine learning content? | Ahmed Elgammal (CS334/CS534, AI/vision/ML). | Correctly identified Elgammal and quoted "math-heavy" / "AI researcher." But retrieval was weaker (top 0.486) and pulled in off-topic Pajarillo (CS111) and Borgida (CS336) chunks, which were then over-cited as sources. | Partially relevant | Accurate (answer); over-cited sources |
+| 5 | What do students say about Srinivas Narayana's lectures and course structure? | Enthusiastic, clear, well-structured; recorded lectures; hard but fair; attendance helps. | Captured all of it: informative/recorded lectures, well-structured relevant course, hard-but-fair work, attendance helps understanding. All 5 chunks from `narayana.txt` (dist 0.27–0.51). | Relevant | Accurate |
 
 **Retrieval quality:** Relevant / Partially relevant / Off-target  
 **Response accuracy:** Accurate / Partially accurate / Inaccurate
+
+*Out-of-domain control:* "What is the best dining hall at Rutgers?" — the gate filtered the three weakest chunks, but two borderline Narayana CS352 chunks (0.55, 0.59) still passed under the 0.60 cutoff. The LLM then correctly refused via the system prompt (layer 2), since lecture reviews say nothing about dining, returning "I don't have enough information on that." with no sources. This shows both grounding layers in action.
 
 ---
 
@@ -118,13 +124,13 @@ This project covers Rutgers New Brunswick Computer Science course and professor 
      "The embedding model treated the professor's nickname as out-of-vocabulary and returned
      results from an unrelated review" is an explanation. -->
 
-**Question that failed:**
+**Question that failed:** "Which professor is associated with math-heavy AI or machine learning content?" (Q4). The *answer* was correct, but **source attribution failed** — the failure is in retrieval + citation, not generation.
 
-**What the system returned:**
+**What the system returned:** The answer correctly named Ahmed Elgammal and quoted "math-heavy" and "AI researcher." However, the retrieved context included two off-topic chunks — Pedro Pajarillo (CS111, "Prof. Pedro is the goat... turned me into a W programmer") at distance 0.507 and Alexander Borgida (CS336, "isn't the brightest for a CS professor") at 0.531 — and because citations are generated programmatically from every retrieved chunk under the 0.60 cutoff, the system cited `pajarillo.txt` and `borgida.txt` as sources for an answer that drew only from `elgammal.txt`. A user reading the citations would think Pajarillo and Borgida reviews mention AI/ML, which they do not.
 
-**Root cause (tied to a specific pipeline stage):**
+**Root cause (tied to a specific pipeline stage):** Two interacting causes. (1) **Embedding/retrieval:** this is an abstract conceptual query with no professor name and few lexical anchors ("math-heavy AI or machine learning"), so `all-MiniLM-L6-v2` produces a flatter similarity distribution — the correct Elgammal chunks only reach ~0.486–0.509, while generic praise/criticism chunks from unrelated professors land just below the 0.60 cutoff. Name-based queries (Q1, Q3, Q5) cluster tightly at 0.27–0.44 and never have this problem. (2) **Attribution design:** `ask()` cites the source of *every* chunk passed as context rather than only the documents the answer actually used, so weak-but-under-cutoff chunks become spurious citations. The same effect appears mildly in Q2 (Narayana and Ames cited but unused).
 
-**What you would change to fix it:**
+**What you would change to fix it:** Three options, cheapest first: (a) tighten the relevance cutoff from 0.60 to ~0.48 so borderline off-topic chunks are excluded from context and citations — for Q4 this would drop Pajarillo (0.507) and Borgida (0.531) and cite only Elgammal; (b) add a second-stage citation filter that only lists a source if its professor's name appears in the generated answer; (c) longer term, switch to a stronger embedding model or add hybrid keyword (BM25) re-ranking so conceptual queries get sharper separation between on- and off-topic chunks. Option (b) most directly fixes the attribution honesty problem regardless of retrieval noise.
 
 ---
 
@@ -133,9 +139,9 @@ This project covers Rutgers New Brunswick Computer Science course and professor 
 <!-- Reflect on how planning.md shaped your implementation.
      Answer both questions with at least 2–3 sentences each. -->
 
-**One way the spec helped you during implementation:**
+**One way the spec helped you during implementation:** Writing the Chunking Strategy in `planning.md` before any code forced the "one review per chunk" decision up front, and that decision rippled cleanly through every later stage. Because I had committed to a chunk being a single self-contained opinion, the ingestion parser split on review boundaries instead of a fixed character count, each embedding represented one coherent stance, and the metadata schema (professor, course, grade, source) was obvious. When retrieval worked well on name-based queries (distances 0.27–0.44), it was a direct payoff of that early spec decision — the chunks weren't diluting multiple opinions together. Having the five evaluation questions written in advance also meant I could test retrieval in Milestone 4 against concrete targets before wiring in the LLM.
 
-**One way your implementation diverged from the spec, and why:**
+**One way your implementation diverged from the spec, and why:** My `planning.md` Retrieval Approach only described semantic search and a top-k, but during implementation I added a **relevance-gate grounding layer** (refuse before calling the LLM if no chunk is within distance 0.60) that wasn't in the original plan. I added it after realizing the system prompt alone is a soft guarantee — a clever out-of-domain question could still coax a plausible answer. The gate makes refusal a structural property, not a request. I also diverged on the embedding distance metric: the plan didn't specify one, but I explicitly configured ChromaDB for cosine distance with normalized embeddings so distance scores were interpretable against the milestone's 0.5 threshold. Finally, I pinned Gradio to 5.x instead of the suggested 6.9+ because Gradio 6 requires `huggingface-hub>=1.2`, which conflicts with the `transformers` version `sentence-transformers` depends on.
 
 ---
 
@@ -150,14 +156,14 @@ This project covers Rutgers New Brunswick Computer Science course and professor 
      chunk_text(). It returned a function using a fixed character split. I overrode the
      chunk size from 500 to 200 because my documents are short reviews, not long guides." -->
 
-**Instance 1**
+**Instance 1 — Ingestion and chunking**
 
-- *What I gave the AI:*
-- *What it produced:*
-- *What I changed or overrode:*
+- *What I gave the AI:* My `planning.md` Documents and Chunking Strategy sections (one-review-per-chunk, ~600-char cap, no cross-review overlap) plus the pipeline diagram, and the raw Rate My Professors review files in `documents/`.
+- *What it produced:* `pipeline.py` with `load_documents()` / `clean_text()` / `chunk_document()`, splitting each file on a `=== REVIEW ===` delimiter and emitting one chunk per review with metadata.
+- *What I changed or overrode:* I directed it to make the cleaning step actually do work — decode HTML entities (`&#39;`, `&amp;`) and strip RMP boilerplate (rating headers, `Helpful` + vote tallies, `Load More Ratings`, footer) rather than just trim whitespace. I also had it prefix every chunk with `Professor (Course):` so chunks stay self-contained after retrieval, and verified the output by printing 5 random chunks and grepping `chunks.json` to confirm no entities or boilerplate leaked.
 
-**Instance 2**
+**Instance 2 — Grounded generation and source attribution**
 
-- *What I gave the AI:*
-- *What it produced:*
-- *What I changed or overrode:*
+- *What I gave the AI:* The grounding requirement (answer only from retrieved context, decline otherwise, cite sources), the Groq `llama-3.3-70b-versatile` target, and my retrieval function from `vector_store.py`.
+- *What it produced:* A first version with a strict system prompt that asked the *LLM* to cite its sources in the response text.
+- *What I changed or overrode:* I overrode the attribution mechanism to be **programmatic** — citations are built from the metadata of the chunks passed as context (`query.py` `_unique_sources()`), not from whatever the LLM writes, so a citation is guaranteed. I also added a **relevance gate** (refuse before calling the LLM if no chunk is within cosine distance 0.60) that the AI's draft didn't have, making out-of-domain refusal structural rather than prompt-dependent. The evaluation later exposed a downside of my programmatic approach (over-citation on abstract queries), which I documented in the Failure Case Analysis instead of hiding.
