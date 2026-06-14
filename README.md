@@ -57,6 +57,20 @@ This project covers Rutgers New Brunswick Computer Science course and professor 
 
 ---
 
+## Sample Chunks
+
+<!-- At least 5 labeled sample chunks, each with its source document name. -->
+
+Five representative chunks from `chunks.json` (regenerate with `python pipeline.py --sample 5`). Each is one complete review, prefixed with professor and course so it is self-contained.
+
+1. **`centeno.txt`** (id `centeno-r3`): "Ana Paula Centeno (CS111): I think I know more about her love for cats than computer science. Lectures move slow, you can just skip and study the practice exams. The study material is actually useful."
+2. **`francisco.txt`** (id `francisco-r5`): "John-Austen Francisco (CS211): Terrible lecturer. The lectures were boring and hard to follow. He's really bad at explaining concepts. The assignments weren't too bad, but the exams were pretty difficult. Pretty accessible outside of class. Nice guy tho, just bad at teaching."
+3. **`elgammal.txt`** (id `elgammal-r1`): "Ahmed Elgammal (CS334): This class is so hard. The professor is very nice, though a little hard to understand. The content is just so hard and so math-heavy. I passed, which surprises even me, but I do not recommend if you don't like math or computer graphics/vision/ML."
+4. **`narayana.txt`** (id `narayana-r1`): "Srinivas Narayana (CS553): Enthusiastic about teaching and explains concepts well. Gives a lot of resources for assignments, which are hard but fair. There is a lot of reading though, and a quiz every week. The lectures are informative and recorded. He runs the class very well and gives you every chance to do well. If he's teaching a class, take it."
+5. **`bernstein.txt`** (id `bernstein-r4`): "Aaron Bernstein (CS344): Bernstein gives extra credit in most hw & exams. Exam is non cumulative. Lectures are recorded. Each hw usually has 1 very hard question. Exams are modified versions of the hws. He will tell you which questions the exams are similar to. Very lenient on final grade, 86 is an A even though the average is around 80+. Got an A without exam 2."
+
+---
+
 ## Embedding Model
 
 <!-- Name the embedding model you used and explain your choice.
@@ -68,6 +82,42 @@ This project covers Rutgers New Brunswick Computer Science course and professor 
 **Model used:** `all-MiniLM-L6-v2` via `sentence-transformers`, with embeddings stored in a local ChromaDB collection (`rutgers_cs_reviews`) using cosine distance. Embeddings are L2-normalized, so ChromaDB returns `1 - cosine_similarity` as the distance (lower = more relevant). I chose it because it runs locally with no API key or rate limits, is fast on CPU, and is tuned for short sentence-level text — which fits my one-review-per-chunk strategy. Retrieval uses top-k = 5. Across all five evaluation queries, the top-ranked chunk scored between 0.27 and 0.46 and came from the correct professor, confirming retrieval quality before adding generation.
 
 **Production tradeoff reflection:** If I were deploying for real users and cost weren't a constraint, I'd weigh a stronger hosted embedding model (e.g., OpenAI `text-embedding-3-large` or Cohere) for better accuracy on slangy, sarcastic review text where MiniLM can miss implied sentiment (e.g., "his lectures put me to sleep" has no explicit negative keyword). The tradeoffs: (1) accuracy on domain-specific text — larger models capture more nuance but with diminishing returns on already-short reviews; (2) latency and dependency — an API adds network round-trips and an external point of failure versus a fully local model; (3) cost at scale — per-token billing for every chunk and query; (4) context length — irrelevant for short reviews but important if I expanded to long-form guides or Reddit megathreads; (5) multilingual support — unnecessary for an English-only Rutgers corpus, but a multilingual model would matter for an international deployment; (6) privacy — local embedding keeps student opinions off third-party servers. For this project, the local model's zero cost, low latency, and strong retrieval scores make it the right default.
+
+---
+
+## Retrieval Test Results
+
+<!-- At least 3 queries, each with the top returned chunks; for at least 2, explain why they're relevant. -->
+
+Reproduce with `python vector_store.py --query "..."`. Distances are cosine (lower = more relevant); top-k = 5, top 3 shown per query.
+
+**Query A: "What do students say about Ana Paula Centeno's CS111 exams and assignments?"**
+
+| Dist | Source | Chunk (truncated) |
+|------|--------|-------------------|
+| 0.355 | `centeno.txt` | "...she answers all questions... they have past exams as a resource to study for future exams..." |
+| 0.382 | `centeno.txt` | "Prof. Centeno isn't a bad professor for CS112... assignments can be heavy, so practicing with past exams..." |
+| 0.420 | `centeno.txt` | "...the worst class that I ever took... The exams and assignments were unnecessarily hard..." |
+
+*Why these are relevant:* All three come from the correct document (`centeno.txt`) and directly address exams and assignments — and they capture the genuine disagreement in the reviews (one praises the past-exam resources, another calls the work "unnecessarily hard"). The embedding model matched these despite little exact word overlap with the query (e.g., the query says "assignments" while chunk 1 says "past exams as a resource"), which is the value of semantic search over keyword search.
+
+**Query B: "What are the main complaints about John-Austen Francisco's teaching?"**
+
+| Dist | Source | Chunk (truncated) |
+|------|--------|-------------------|
+| 0.285 | `francisco.txt` | "Terrible lecturer. The lectures were boring and hard to follow. He's really bad at explaining concepts..." |
+| 0.357 | `francisco.txt` | "Professor Francisco is a mixed bag - his lectures can be boring, but he's still a knowledgeable and accessible prof..." |
+| 0.381 | `francisco.txt` | "So far the most boring professor I've ever had. Francisco is very lecture-heavy... his tests are tough..." |
+
+*Why these are relevant:* The query asks for "complaints," and the top three chunks are exactly the critical reviews ("terrible lecturer," "boring," "lecture-heavy," "tests are tough"), all from `francisco.txt`. The model surfaced the negative-sentiment reviews above the mixed/positive ones (the most negative review is the closest match at 0.285), which is precisely what a "complaints" query should do.
+
+**Query C: "What do students say about Srinivas Narayana's lectures and course structure?"**
+
+| Dist | Source | Chunk (truncated) |
+|------|--------|-------------------|
+| 0.273 | `narayana.txt` | "Enthusiastic about teaching and explains concepts well... lectures are informative and recorded..." |
+| 0.373 | `narayana.txt` | "Narayana is a great professor, but his exams are pretty hard... notes and recordings are available online..." |
+| 0.399 | `narayana.txt` | "...352 was such a well-structured, interesting, and relevant course..." |
 
 ---
 
@@ -87,6 +137,71 @@ This project covers Rutgers New Brunswick Computer Science course and professor 
 The retrieved chunks are passed as a numbered, source-labeled context block, and the temperature is set to 0.1 to minimize improvisation. Verified on the out-of-domain question "What is the best dining hall at Rutgers?" — the system returned the refusal with no sources.
 
 **How source attribution is surfaced in the response:** Attribution is **programmatic, not LLM-generated**. After generation, `ask()` builds the source list from the metadata of the chunks that were actually passed as context (`source_file`, `professor`, `source_url`), de-duplicated by document. This guarantees a citation even if the model forgets to mention one, and the Gradio UI shows it in a separate "Retrieved from (sources)" panel. (Trade-off documented in the Failure Case Analysis: this can over-cite documents the answer didn't actually use.) When the system declines for lack of relevant context, the source list is empty.
+
+---
+
+## Example Responses
+
+<!-- At least 2 responses with source attribution visible, plus one out-of-scope refusal. -->
+
+Reproduce with `python query.py "..."`.
+
+**Example 1 (in-scope, with attribution)**
+
+> **Q:** What are the main complaints about John-Austen Francisco's teaching?
+>
+> **Answer:** The main complaints about John-Austen Francisco's teaching are that his lectures are boring and hard to follow, he is disorganized, and his exams are tough. Some students also found his note-taking method to be inefficient and mundane, making it difficult to stay engaged. Additionally, one student complained that he did not provide clear grade information, including not posting final grades to Canvas. However, opinions about his teaching vary, with some students finding him to be knowledgeable and a "great guy".
+>
+> **Retrieved from:** `francisco.txt` — John-Austen Francisco (https://www.ratemyprofessors.com/professor/1833903)
+
+**Example 2 (in-scope, with attribution)**
+
+> **Q:** What do students say about Srinivas Narayana's lectures and course structure?
+>
+> **Answer:** Students praise Srinivas Narayana's lectures, describing them as informative, well-structured, and engaging. They appreciate that his lectures are recorded and available online. The course structure is also commended, with students finding the material relevant and interesting. Some students note that attendance is not mandatory, but attending lectures and participating helps with understanding the material. Additionally, students appreciate the resources provided, such as cheat sheets for exams, and the fairness of the assignments and exams, although some find them challenging.
+>
+> **Retrieved from:** `narayana.txt` — Srinivas Narayana (https://www.ratemyprofessors.com/professor/2481805)
+
+**Example 3 (out-of-scope refusal)**
+
+> **Q:** What is the best dining hall at Rutgers?
+>
+> **Answer:** I don't have enough information on that.
+>
+> **Retrieved from:** (none — the system declined because no review covers dining)
+
+---
+
+## Query Interface
+
+<!-- Describe the input and output fields, and give a sample interaction transcript. -->
+
+The interface is a Gradio web app (`app.py`), launched with `python app.py` and opened at http://localhost:7860.
+
+**Input field:**
+- **Your question** (textbox) — a free-text question about a Rutgers CS professor or course. Submit with the **Ask** button or by pressing Enter. Clickable example questions are provided below the box, including one out-of-domain example to demonstrate the refusal behavior.
+
+**Output fields:**
+- **Answer** (textbox) — the grounded answer generated from retrieved reviews, or the refusal message.
+- **Retrieved from (sources)** (textbox) — the source document(s) and professor/URL the answer was attributed to, one per line; empty when the system declines.
+
+**Sample interaction transcript:**
+
+```
+[Your question]      Which professor is associated with math-heavy AI or machine learning content?
+
+[Answer]             Ahmed Elgammal is associated with math-heavy AI or machine learning
+                     content, as mentioned in the reviews for his CS334 course. Review 1
+                     mentions that he is an AI researcher, and Review 2 states that the
+                     content of CS334 is "so math-heavy" and related to computer
+                     graphics/vision/ML.
+
+[Retrieved from]     - elgammal.txt - Ahmed Elgammal (https://www.ratemyprofessors.com/professor/184976)
+                     - pajarillo.txt - Pedro Pajarillo (https://www.ratemyprofessors.com/professor/3025313)
+                     - borgida.txt - Alexander Borgida (https://www.ratemyprofessors.com/professor/173951)
+```
+
+(This transcript intentionally shows the over-citation behavior analyzed in the Failure Case Analysis below — the answer is correct and about Elgammal, but the source list includes two off-topic documents.)
 
 ---
 
